@@ -1,6 +1,8 @@
 const express = require('express');
 const cors = require('cors');
 const { pool } = require('./db');
+const { hotelExists, listRooms, getRoom } = require('./rooms');
+const { parseDateRange, parseId } = require('./validation');
 
 const app = express();
 app.use(cors());
@@ -30,6 +32,41 @@ app.get('/hotels', async (req, res, next) => {
     res.json(rows);
   } catch (err) {
     next(err);
+  }
+});
+
+// Rooms of one hotel. With ?checkIn=YYYY-MM-DD&checkOut=YYYY-MM-DD it also returns availableUnits.
+app.get('/hotels/:id/rooms', async (req, res, next) => {
+  try {
+    const hotelId = parseId(req.params.id);
+    if (!hotelId) return res.status(400).json({ error: 'Invalid hotel id' });
+
+    const { range, error } = parseDateRange(req.query.checkIn, req.query.checkOut);
+    if (error) return res.status(400).json({ error });
+
+    if (!(await hotelExists(hotelId))) return res.status(404).json({ error: 'Hotel not found' });
+
+    return res.json(await listRooms(hotelId, range));
+  } catch (err) {
+    return next(err);
+  }
+});
+
+// One room type. Dates are optional, as above.
+app.get('/rooms/:id', async (req, res, next) => {
+  try {
+    const roomId = parseId(req.params.id);
+    if (!roomId) return res.status(400).json({ error: 'Invalid room id' });
+
+    const { range, error } = parseDateRange(req.query.checkIn, req.query.checkOut);
+    if (error) return res.status(400).json({ error });
+
+    const room = await getRoom(roomId, range);
+    if (!room) return res.status(404).json({ error: 'Room not found' });
+
+    return res.json(room);
+  } catch (err) {
+    return next(err);
   }
 });
 
