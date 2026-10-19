@@ -1,0 +1,13 @@
+{
+  "name": "@hotel/messaging",
+  "version": "1.0.0",
+  "description": "Shared RabbitMQ helper for the hotel booking microservices",
+  "main": "index.js",
+  "scripts": {
+    "smoke": "node --env-file=../../.env smoke-test.js"
+  },
+  "license": "ISC",
+  "dependencies": {
+    "amqplib": "^0.10.4"
+  }
+}
