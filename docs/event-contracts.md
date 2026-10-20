@@ -176,7 +176,7 @@ Changes: Hotel releases the held room. Notification sends a failure message.
 
 ### 8. BookingCancelled
 
-Purpose: the guest cancelled a PENDING or CONFIRMED booking.
+Purpose: the guest cancelled a CONFIRMED booking. Only CONFIRMED bookings can be cancelled.
 Publisher: Booking. Consumers: Hotel, Payment, Notification.
 Changes: Hotel releases the room. Payment marks the payment `REFUNDED`. Notification records the cancellation.
 
