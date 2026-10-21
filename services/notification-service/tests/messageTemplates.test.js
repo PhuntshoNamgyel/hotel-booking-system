@@ -49,3 +49,15 @@ test('missing data does not throw', () => {
   expect(() => buildNotification({ eventType: 'BookingConfirmed' })).not.toThrow();
   expect(() => buildNotification(undefined)).not.toThrow();
 });
+
+test.each(types)('%s has a space before the guest name', (eventType) => {
+  const { message } = buildNotification({ eventType, data: { ...base, reason: 'PAYMENT_DECLINED' } });
+  expect(message).not.toMatch(/[A-Za-z]Tashi/);
+});
+
+test('RoomReserved and BookingFailed messages are spaced correctly', () => {
+  const held = buildNotification({ eventType: 'RoomReserved', data: base }).message;
+  expect(held).toContain('held for Tashi from 2026-11-01 to 2026-11-03. Waiting for payment.');
+  const failed = buildNotification({ eventType: 'BookingFailed', data: { ...base, reason: 'PAYMENT_DECLINED' } }).message;
+  expect(failed).toContain('failed because the payment was declined.');
+});
