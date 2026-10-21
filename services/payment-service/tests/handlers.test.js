@@ -6,7 +6,7 @@ jest.mock('../src/db', () => ({ pool: { query: jest.fn() } }));
 jest.mock('../src/payments');
 
 const { processOnce } = require('../src/messaging');
-const { insertPayment } = require('../src/payments');
+const { insertPayment, refundPayment } = require('../src/payments');
 const adminState = require('../src/adminState');
 const { createHandlers } = require('../src/handlers');
 
@@ -30,6 +30,13 @@ const reserved = {
   },
 };
 
+const cancelled = {
+  eventId: 'evt-c1',
+  eventType: 'BookingCancelled',
+  correlationId: 'b-1',
+  data: { bookingId: 'b-1', roomId: 3, guestName: 'Tashi', guestEmail: 't@example.com' },
+};
+
 beforeEach(() => {
   jest.clearAllMocks();
   delete process.env.PAYMENT_LIMIT;
@@ -37,6 +44,7 @@ beforeEach(() => {
   adminState.setTransientErrors(0);
   broker.publish.mockResolvedValue({});
   insertPayment.mockResolvedValue(true);
+  refundPayment.mockResolvedValue(1);
   // Run the work function directly, as if the event was new.
   processOnce.mockImplementation(async (pool, event, work) => ({ duplicate: false, result: await work(client) }));
 });
@@ -126,4 +134,27 @@ test('an unknown event type is ignored', async () => {
   await handleEvent({ eventId: 'evt-9', eventType: 'SomethingElse', correlationId: 'b-1', data: {} });
   expect(processOnce).not.toHaveBeenCalled();
   expect(broker.publish).not.toHaveBeenCalled();
+});
+
+test('BookingCancelled refunds the payment and publishes nothing', async () => {
+  await handleEvent(cancelled);
+  expect(refundPayment).toHaveBeenCalledWith(client, 'b-1');
+  expect(broker.publish).not.toHaveBeenCalled();
+});
+
+test('BookingCancelled for a booking with no successful payment changes nothing and does not fail', async () => {
+  refundPayment.mockResolvedValue(0);
+  await expect(handleEvent(cancelled)).resolves.toBeUndefined();
+  expect(broker.publish).not.toHaveBeenCalled();
+});
+
+test('a duplicate BookingCancelled is ignored', async () => {
+  processOnce.mockResolvedValue({ duplicate: true });
+  await handleEvent(cancelled);
+  expect(refundPayment).not.toHaveBeenCalled();
+});
+
+test('BookingCancelled without bookingId throws', async () => {
+  await expect(handleEvent({ ...cancelled, data: {} })).rejects.toThrow('Missing fields: bookingId');
+  expect(processOnce).not.toHaveBeenCalled();
 });

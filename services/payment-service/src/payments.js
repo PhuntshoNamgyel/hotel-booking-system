@@ -44,4 +44,16 @@ async function insertPayment(client, { id, bookingId, amount, status, reason }) 
   return rows.length > 0;
 }
 
-module.exports = { listPayments, getPayment, insertPayment };
+// Marks a SUCCESS payment as REFUNDED. Returns how many rows changed (0 or 1).
+// A payment that already failed or was already refunded is left alone.
+async function refundPayment(client, bookingId) {
+  const result = await client.query(
+    `UPDATE payments
+        SET status = 'REFUNDED', reason = 'BOOKING_CANCELLED', updated_at = NOW()
+      WHERE booking_id = $1 AND status = 'SUCCESS'`,
+    [bookingId]
+  );
+  return result.rowCount;
+}
+
+module.exports = { listPayments, getPayment, insertPayment, refundPayment };
