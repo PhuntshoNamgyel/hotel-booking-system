@@ -30,4 +30,18 @@ async function getPayment(id) {
   return rows[0] || null;
 }
 
-module.exports = { listPayments, getPayment };
+// Saves a payment using the transaction client from processOnce.
+// booking_id is UNIQUE, so a second payment for the same booking inserts nothing.
+// Returns true when a row was inserted, false when a payment already existed.
+async function insertPayment(client, { id, bookingId, amount, status, reason }) {
+  const { rows } = await client.query(
+    `INSERT INTO payments (id, booking_id, amount, status, reason)
+     VALUES ($1, $2, $3, $4, $5)
+     ON CONFLICT (booking_id) DO NOTHING
+     RETURNING id`,
+    [id, bookingId, amount, status, reason]
+  );
+  return rows.length > 0;
+}
+
+module.exports = { listPayments, getPayment, insertPayment };
