@@ -16,9 +16,6 @@ CREATE TABLE IF NOT EXISTS bookings (
   CHECK (check_out > check_in)
 );
 
--- Speeds up GET /bookings?guestEmail=...
-CREATE INDEX IF NOT EXISTS bookings_guest_email_idx ON bookings (guest_email);
-
 -- Every handled eventId is stored here, so a repeated event changes nothing.
 CREATE TABLE IF NOT EXISTS processed_events (
   event_id     TEXT PRIMARY KEY,
