@@ -1,7 +1,7 @@
 const crypto = require('crypto');
 const { processOnce, createLogger } = require('./messaging');
 const { processPayment } = require('./paymentProcessor');
-const { insertPayment } = require('./payments');
+const { insertPayment, refundPayment } = require('./payments');
 const adminState = require('./adminState');
 
 // Throws if a required field is missing. The shared consumer retries, then dead-letters.
@@ -72,8 +72,23 @@ function createHandlers({ pool, broker }) {
     }
   }
 
+  // BookingCancelled: refund the payment if it succeeded. No event is published.
+  async function handleBookingCancelled(event) {
+    const data = event.data || {};
+    requireFields(data, ['bookingId']);
+
+    const outcome = await processOnce(pool, event, (client) => refundPayment(client, data.bookingId));
+
+    if (outcome.duplicate) {
+      logger.warn('Duplicate event ignored', meta(event));
+    } else {
+      logger.info('Refund processed', { ...meta(event), rowsChanged: outcome.result });
+    }
+  }
+
   const handlers = {
     RoomReserved: handleRoomReserved,
+    BookingCancelled: handleBookingCancelled,
   };
 
   // Called by the shared consumer for every message on payment.q.
