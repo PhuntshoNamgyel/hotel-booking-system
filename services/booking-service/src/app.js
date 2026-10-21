@@ -1,19 +1,20 @@
+// The REST API of the Booking Service.
 const crypto = require('crypto');
 const express = require('express');
 const cors = require('cors');
 const { pool } = require('./db');
 const bookings = require('./bookings');
-const { validateBookingInput, countNights } = require('./validation');
-const { createHotelClient, HotelUnavailableError } = require('./hotelClient');
+const hotelClient = require('./hotelClient');
+const { validateBooking, countNights } = require('./validation');
 const { createLogger } = require('./messaging');
 
 const logger = createLogger('booking-service');
 
-// createApp builds the Express app. Tests pass in a fake hotel client.
-function createApp({ hotelClient = createHotelClient() } = {}) {
+// Builds the app. It is a function so later steps can pass in the RabbitMQ broker.
+function createApp() {
   const app = express();
-  app.use(cors());
-  app.use(express.json());
+  app.use(cors()); // lets the React frontend (another port) call this API
+  app.use(express.json()); // reads JSON request bodies into req.body
 
   // Health check: also confirms the database is reachable.
   app.get('/health', async (req, res) => {
@@ -25,47 +26,47 @@ function createApp({ hotelClient = createHotelClient() } = {}) {
     }
   });
 
-  // Create a booking. It starts as PENDING; events decide the final status.
+  // Create a booking. It starts as PENDING; events from Hotel and Payment decide the final status.
   app.post('/bookings', async (req, res, next) => {
     try {
-      const { value, errors } = validateBookingInput(req.body);
-      if (errors) return res.status(400).json({ error: errors.join('; '), details: errors });
+      // 1. Check the input.
+      const { errors, input } = validateBooking(req.body);
+      if (errors.length > 0) return res.status(400).json({ error: errors.join('; ') });
 
-      // Ask the Hotel Service for the price. Availability is decided later through events.
+      // 2. Ask the Hotel Service for the price.
       let room;
       try {
-        room = await hotelClient.getRoom(value.roomId, value.checkIn, value.checkOut);
+        room = await hotelClient.getRoom(input.roomId, input.checkIn, input.checkOut);
       } catch (err) {
-        if (err instanceof HotelUnavailableError) {
-          logger.warn('Hotel service unavailable', { roomId: value.roomId, error: err.message });
-          return res.status(503).json({ error: 'Hotel service unavailable' });
-        }
-        throw err;
+        logger.warn('Hotel service unavailable', { error: err.message });
+        return res.status(503).json({ error: 'Hotel service unavailable' });
       }
       if (!room) return res.status(404).json({ error: 'Room not found' });
+      // We do not check availableUnits here: the Hotel Service decides that through events.
 
-      const nights = countNights(value.checkIn, value.checkOut);
+      // 3. Price x nights, rounded to 2 decimals.
+      const nights = countNights(input.checkIn, input.checkOut);
       const totalAmount = Math.round(room.pricePerNight * nights * 100) / 100;
 
+      // 4. Save it as PENDING.
       const booking = await bookings.insertBooking({
+        ...input,
         id: crypto.randomUUID(),
-        ...value,
         hotelId: room.hotelId,
         totalAmount,
       });
-      logger.info('Booking created', { bookingId: booking.id, roomId: booking.roomId, totalAmount });
+      logger.info('Booking created', { bookingId: booking.id, totalAmount });
 
       return res.status(201).json(booking);
     } catch (err) {
-      return next(err);
+      return next(err); // unexpected error, handled at the bottom
     }
   });
 
-  // List bookings, newest first. Optional ?guestEmail= filter.
+  // List bookings, newest first. Optional ?guestEmail=
   app.get('/bookings', async (req, res, next) => {
     try {
-      const guestEmail = typeof req.query.guestEmail === 'string' ? req.query.guestEmail.trim() : undefined;
-      res.json(await bookings.listBookings({ guestEmail }));
+      res.json(await bookings.listBookings(req.query.guestEmail));
     } catch (err) {
       next(err);
     }
@@ -87,12 +88,12 @@ function createApp({ hotelClient = createHotelClient() } = {}) {
     res.status(404).json({ error: 'Not found' });
   });
 
-  // Any error that was not handled above. Bad JSON in the body becomes a 400.
+  // Any error not handled above. A broken JSON body is the client's fault, so 400.
   app.use((err, req, res, next) => {
     if (err.type === 'entity.parse.failed') {
       return res.status(400).json({ error: 'Request body must be valid JSON' });
     }
-    logger.error('Unhandled error', { error: err.message, path: req.path });
+    logger.error('Unhandled error', { error: err.message });
     return res.status(500).json({ error: 'Internal server error' });
   });
 

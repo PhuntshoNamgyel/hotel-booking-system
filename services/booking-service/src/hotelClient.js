@@ -1,33 +1,18 @@
-// Reads room details from the Hotel Service over REST.
-// This is the only synchronous call the Booking Service makes. It never touches hotel_db.
+// The only REST call the Booking Service makes: ask the Hotel Service for a room's price.
+// We never read hotel_db directly, because each service owns its own database.
 
-class HotelUnavailableError extends Error {}
+// Returns the room ({ hotelId, pricePerNight, ... }), or null if the room does not exist.
+// Throws an error if the Hotel Service is down, slow or broken.
+async function getRoom(roomId, checkIn, checkOut) {
+  const baseUrl = process.env.HOTEL_SERVICE_URL || 'http://localhost:3001';
+  const url = `${baseUrl}/rooms/${roomId}?checkIn=${checkIn}&checkOut=${checkOut}`;
 
-function createHotelClient({ baseUrl = process.env.HOTEL_SERVICE_URL || 'http://localhost:3001' } = {}) {
-  // Returns { hotelId, pricePerNight, ... } or null when the room does not exist.
-  // Throws HotelUnavailableError for timeouts, network errors and unexpected answers.
-  async function getRoom(roomId, checkIn, checkOut) {
-    const url = `${baseUrl}/rooms/${encodeURIComponent(roomId)}`
-      + `?checkIn=${encodeURIComponent(checkIn)}&checkOut=${encodeURIComponent(checkOut)}`;
+  // Give up after 5 seconds instead of making the guest wait forever.
+  const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
 
-    let res;
-    try {
-      res = await fetch(url, { signal: AbortSignal.timeout(5000) });
-    } catch (err) {
-      throw new HotelUnavailableError(`Hotel service request failed: ${err.message}`);
-    }
-
-    if (res.status === 404) return null;
-    if (!res.ok) throw new HotelUnavailableError(`Hotel service answered ${res.status}`);
-
-    const room = await res.json().catch(() => null);
-    if (!room || !Number.isInteger(room.hotelId) || typeof room.pricePerNight !== 'number') {
-      throw new HotelUnavailableError('Hotel service sent an unexpected room format');
-    }
-    return room;
-  }
-
-  return { getRoom };
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`Hotel service answered ${res.status}`);
+  return res.json();
 }
 
-module.exports = { createHotelClient, HotelUnavailableError };
+module.exports = { getRoom };
