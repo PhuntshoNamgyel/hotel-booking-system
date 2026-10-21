@@ -22,12 +22,13 @@ function countNights(checkIn, checkOut) {
 // `today` is a parameter so the tests can use a fixed date.
 function validateBooking(body, today = new Date().toISOString().slice(0, 10)) {
   const errors = [];
+  const data = body && typeof body === 'object' ? body : {}; // no body at all: treat it as empty
   const input = {
-    roomId: body.roomId,
-    guestName: typeof body.guestName === 'string' ? body.guestName.trim() : '',
-    guestEmail: typeof body.guestEmail === 'string' ? body.guestEmail.trim() : '',
-    checkIn: body.checkIn,
-    checkOut: body.checkOut,
+    roomId: data.roomId,
+    guestName: typeof data.guestName === 'string' ? data.guestName.trim() : '',
+    guestEmail: typeof data.guestEmail === 'string' ? data.guestEmail.trim() : '',
+    checkIn: data.checkIn,
+    checkOut: data.checkOut,
   };
 
   if (!Number.isInteger(input.roomId) || input.roomId <= 0) {

@@ -66,9 +66,14 @@ function createApp() {
   // List bookings, newest first. Optional ?guestEmail=
   app.get('/bookings', async (req, res, next) => {
     try {
-      res.json(await bookings.listBookings(req.query.guestEmail));
+      // ?guestEmail=a&guestEmail=b would arrive as a list, so only accept one plain value.
+      const { guestEmail } = req.query;
+      if (guestEmail !== undefined && typeof guestEmail !== 'string') {
+        return res.status(400).json({ error: 'guestEmail must be a single value' });
+      }
+      return res.json(await bookings.listBookings(guestEmail));
     } catch (err) {
-      next(err);
+      return next(err);
     }
   });
 

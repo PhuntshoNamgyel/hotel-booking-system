@@ -49,6 +49,10 @@ test('allows 30 nights but rejects 31', () => {
   expect(errorsFor({ checkIn: '2026-11-01', checkOut: '2026-12-02' })).toContain('Stay cannot be longer than 30 nights');
 });
 
+test('a missing body gives errors instead of crashing', () => {
+  expect(validateBooking(undefined, TODAY).errors).toHaveLength(4);
+});
+
 test('helpers work', () => {
   expect(isRealDate('2028-02-29')).toBe(true); // leap year
   expect(isRealDate('2027-02-29')).toBe(false);

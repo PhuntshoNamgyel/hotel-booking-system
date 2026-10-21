@@ -12,7 +12,13 @@ async function getRoom(roomId, checkIn, checkOut) {
 
   if (res.status === 404) return null;
   if (!res.ok) throw new Error(`Hotel service answered ${res.status}`);
-  return res.json();
+
+  // Check the answer, otherwise a missing price would make totalAmount NaN (not a number).
+  const room = await res.json();
+  if (!Number.isInteger(room.hotelId) || !Number.isFinite(room.pricePerNight)) {
+    throw new Error('Hotel response missing hotelId or pricePerNight');
+  }
+  return room;
 }
 
 module.exports = { getRoom };

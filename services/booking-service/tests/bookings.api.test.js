@@ -81,6 +81,12 @@ test('GET /bookings returns the list and passes the email filter', async () => {
   expect(bookings.listBookings).toHaveBeenCalledWith('gayley@example.com');
 });
 
+test('GET /bookings returns 400 when guestEmail is repeated', async () => {
+  const res = await request(app).get('/bookings?guestEmail=a@b.com&guestEmail=c@d.com');
+  expect(res.status).toBe(400);
+  expect(bookings.listBookings).not.toHaveBeenCalled();
+});
+
 test('GET /bookings/:id returns one booking', async () => {
   bookings.getBookingById.mockResolvedValue({ id: 'b1', status: 'PENDING' });
   const res = await request(app).get('/bookings/b1');
