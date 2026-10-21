@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "node --watch --env-file=.env src/index.js",
     "start": "node --env-file=.env src/index.js",
+    "send": "node --env-file=.env scripts/send-event.js",
     "test": "jest"
   },
   "license": "ISC",
