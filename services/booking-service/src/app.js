@@ -10,8 +10,8 @@ const { createLogger } = require('./messaging');
 
 const logger = createLogger('booking-service');
 
-// Builds the app. It is a function so later steps can pass in the RabbitMQ broker.
-function createApp() {
+// Builds the app. The RabbitMQ broker is passed in, so tests can pass a fake one.
+function createApp({ broker } = {}) {
   const app = express();
   app.use(cors()); // lets the React frontend (another port) call this API
   app.use(express.json()); // reads JSON request bodies into req.body
@@ -57,6 +57,31 @@ function createApp() {
       });
       logger.info('Booking created', { bookingId: booking.id, totalAmount });
 
+      // 5. Publish BookingCreated. This starts the event chain:
+      //    Hotel holds the room -> Payment charges -> we confirm.
+      //    The event carries everything Hotel and Notification need, so they never call us back.
+      try {
+        await broker.publish('BookingCreated', {
+          bookingId: booking.id,
+          roomId: booking.roomId,
+          hotelId: booking.hotelId,
+          guestName: booking.guestName,
+          guestEmail: booking.guestEmail,
+          checkIn: booking.checkIn,
+          checkOut: booking.checkOut,
+          totalAmount: booking.totalAmount,
+        });
+      } catch (err) {
+        // RabbitMQ is down: nobody will ever hear about this booking, so it cannot stay PENDING.
+        await bookings.markPublishFailed(booking.id);
+        logger.error('Could not publish BookingCreated, booking marked FAILED', {
+          bookingId: booking.id,
+          error: err.message,
+        });
+        return res.status(503).json({ error: 'Message broker unavailable' });
+      }
+
+      // 6. Answer the guest. The status is still PENDING; the frontend polls for the result.
       return res.status(201).json(booking);
     } catch (err) {
       return next(err); // unexpected error, handled at the bottom

@@ -48,4 +48,15 @@ async function listBookings(guestEmail) {
   return rows;
 }
 
-module.exports = { COLUMNS, insertBooking, getBookingById, listBookings };
+// Used when BookingCreated could not be published: the booking can never continue, so mark it FAILED.
+async function markPublishFailed(id) {
+  const { rows } = await pool.query(
+    `UPDATE bookings SET status = 'FAILED', failure_reason = 'PUBLISH_FAILED', updated_at = NOW()
+     WHERE id = $1
+     RETURNING ${COLUMNS}`,
+    [id]
+  );
+  return rows[0];
+}
+
+module.exports = { COLUMNS, insertBooking, getBookingById, listBookings, markPublishFailed };
