@@ -109,6 +109,12 @@ test('a missing bookingId throws, so the library retries and dead-letters', asyn
   expect(processOnce).not.toHaveBeenCalled();
 });
 
+test('PaymentFailed without reason throws and changes nothing', async () => {
+  await expect(handleEvent(event('PaymentFailed', { bookingId: 'b-1' }))).rejects.toThrow('Missing fields: reason');
+  expect(processOnce).not.toHaveBeenCalled();
+  expect(broker.publish).not.toHaveBeenCalled();
+});
+
 test('a failed publish throws, so the transaction rolls back and the event is retried', async () => {
   bookings.finishPendingBooking.mockResolvedValue({ ...booking, status: 'CONFIRMED' });
   broker.publish.mockRejectedValue(new Error('Channel closed'));

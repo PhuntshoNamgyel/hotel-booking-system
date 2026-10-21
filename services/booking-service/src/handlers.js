@@ -45,9 +45,9 @@ function createHandlers({ pool, broker }) {
   // 1. check the fields, 2. update the booking if it is PENDING, 3. publish the follow-up event.
   // Steps 2 and 3 run inside processOnce: one database transaction that also stores the eventId,
   // so the same event delivered twice changes nothing the second time.
-  async function finishBooking(event, status, failureReason, followUpEvent) {
+  async function finishBooking(event, status, failureReason, followUpEvent, required) {
     const data = event.data || {};
-    requireFields(data, ['bookingId']);
+    requireFields(data, required);
     const meta = { eventType: event.eventType, eventId: event.eventId, bookingId: data.bookingId };
 
     const outcome = await processOnce(pool, event, async (client) => {
@@ -72,10 +72,14 @@ function createHandlers({ pool, broker }) {
     }
   }
 
+  // Failed events must carry a reason, because BookingFailed passes it on to Hotel and Notification.
   const handlers = {
-    RoomReservationFailed: (event) => finishBooking(event, 'FAILED', event.data && event.data.reason, null),
-    PaymentFailed: (event) => finishBooking(event, 'FAILED', event.data && event.data.reason, 'BookingFailed'),
-    PaymentSucceeded: (event) => finishBooking(event, 'CONFIRMED', null, 'BookingConfirmed'),
+    RoomReservationFailed: (event) =>
+      finishBooking(event, 'FAILED', event.data && event.data.reason, null, ['bookingId', 'reason']),
+    PaymentFailed: (event) =>
+      finishBooking(event, 'FAILED', event.data && event.data.reason, 'BookingFailed', ['bookingId', 'reason']),
+    PaymentSucceeded: (event) =>
+      finishBooking(event, 'CONFIRMED', null, 'BookingConfirmed', ['bookingId']),
   };
 
   // Called by the shared library for every message on booking.q.
