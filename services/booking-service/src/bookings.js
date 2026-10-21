@@ -59,4 +59,24 @@ async function markPublishFailed(id) {
   return rows[0];
 }
 
-module.exports = { COLUMNS, insertBooking, getBookingById, listBookings, markPublishFailed };
+// Finishes a booking (CONFIRMED or FAILED), but only while it is still PENDING.
+// Returns the updated booking, or null if it does not exist or was already finished.
+// `db` is the transaction client from processOnce, so this change commits together with the eventId.
+async function finishPendingBooking(id, status, failureReason, db = pool) {
+  const { rows } = await db.query(
+    `UPDATE bookings SET status = $2, failure_reason = $3, updated_at = NOW()
+     WHERE id = $1 AND status = 'PENDING'
+     RETURNING ${COLUMNS}`,
+    [id, status, failureReason]
+  );
+  return rows[0] || null;
+}
+
+module.exports = {
+  COLUMNS,
+  insertBooking,
+  getBookingById,
+  listBookings,
+  markPublishFailed,
+  finishPendingBooking,
+};
