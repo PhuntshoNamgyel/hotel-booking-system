@@ -72,7 +72,20 @@ async function finishPendingBooking(id, status, failureReason, db = pool) {
   return rows[0] || null;
 }
 
+// Cancels a booking, but only if it is CONFIRMED. Returns the booking, or null if nothing changed.
+// `db` is the client of the open transaction in the cancel endpoint.
+async function cancelConfirmedBooking(id, db) {
+  const { rows } = await db.query(
+    `UPDATE bookings SET status = 'CANCELLED', updated_at = NOW()
+     WHERE id = $1 AND status = 'CONFIRMED'
+     RETURNING ${COLUMNS}`,
+    [id]
+  );
+  return rows[0] || null;
+}
+
 module.exports = {
+  cancelConfirmedBooking,
   COLUMNS,
   insertBooking,
   getBookingById,
