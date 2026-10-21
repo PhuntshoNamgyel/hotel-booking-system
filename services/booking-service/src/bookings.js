@@ -48,4 +48,48 @@ async function listBookings(guestEmail) {
   return rows;
 }
 
-module.exports = { COLUMNS, insertBooking, getBookingById, listBookings };
+// Used when BookingCreated could not be published: the booking can never continue, so mark it FAILED.
+async function markPublishFailed(id) {
+  const { rows } = await pool.query(
+    `UPDATE bookings SET status = 'FAILED', failure_reason = 'PUBLISH_FAILED', updated_at = NOW()
+     WHERE id = $1
+     RETURNING ${COLUMNS}`,
+    [id]
+  );
+  return rows[0];
+}
+
+// Finishes a booking (CONFIRMED or FAILED), but only while it is still PENDING.
+// Returns the updated booking, or null if it does not exist or was already finished.
+// `db` is the transaction client from processOnce, so this change commits together with the eventId.
+async function finishPendingBooking(id, status, failureReason, db = pool) {
+  const { rows } = await db.query(
+    `UPDATE bookings SET status = $2, failure_reason = $3, updated_at = NOW()
+     WHERE id = $1 AND status = 'PENDING'
+     RETURNING ${COLUMNS}`,
+    [id, status, failureReason]
+  );
+  return rows[0] || null;
+}
+
+// Cancels a booking, but only if it is CONFIRMED. Returns the booking, or null if nothing changed.
+// `db` is the client of the open transaction in the cancel endpoint.
+async function cancelConfirmedBooking(id, db) {
+  const { rows } = await db.query(
+    `UPDATE bookings SET status = 'CANCELLED', updated_at = NOW()
+     WHERE id = $1 AND status = 'CONFIRMED'
+     RETURNING ${COLUMNS}`,
+    [id]
+  );
+  return rows[0] || null;
+}
+
+module.exports = {
+  cancelConfirmedBooking,
+  COLUMNS,
+  insertBooking,
+  getBookingById,
+  listBookings,
+  markPublishFailed,
+  finishPendingBooking,
+};

@@ -9,7 +9,9 @@ const bookings = require('../src/bookings');
 const hotelClient = require('../src/hotelClient');
 const { createApp } = require('../src/app');
 
-const app = createApp();
+// A fake broker: records what would be published to RabbitMQ.
+const broker = { publish: jest.fn() };
+const app = createApp({ broker });
 
 // A date n days from today, so the booking is always in the future.
 const daysFromNow = (n) => new Date(Date.now() + n * 86400000).toISOString().slice(0, 10);
@@ -37,6 +39,38 @@ test('POST /bookings creates a PENDING booking: 80 per night x 2 nights = 160', 
   expect(res.body.status).toBe('PENDING');
   expect(res.body.totalAmount).toBe(160);
   expect(res.body.hotelId).toBe(1);
+});
+
+test('POST /bookings publishes BookingCreated with the booking data', async () => {
+  hotelClient.getRoom.mockResolvedValue({ hotelId: 1, pricePerNight: 80 });
+  bookings.insertBooking.mockImplementation(async (b) => ({ ...b, status: 'PENDING' }));
+
+  const res = await request(app).post('/bookings').send(body);
+
+  expect(broker.publish).toHaveBeenCalledTimes(1);
+  expect(broker.publish).toHaveBeenCalledWith('BookingCreated', {
+    bookingId: res.body.id,
+    roomId: 1,
+    hotelId: 1,
+    guestName: 'Gayley Choden',
+    guestEmail: 'gayley@example.com',
+    checkIn: body.checkIn,
+    checkOut: body.checkOut,
+    totalAmount: 160,
+  });
+});
+
+test('POST /bookings marks the booking FAILED and returns 503 when publishing fails', async () => {
+  hotelClient.getRoom.mockResolvedValue({ hotelId: 1, pricePerNight: 80 });
+  bookings.insertBooking.mockImplementation(async (b) => ({ ...b, status: 'PENDING' }));
+  broker.publish.mockRejectedValue(new Error('Channel closed'));
+  jest.spyOn(console, 'error').mockImplementation(() => {});
+
+  const res = await request(app).post('/bookings').send(body);
+
+  expect(res.status).toBe(503);
+  expect(res.body).toEqual({ error: 'Message broker unavailable' });
+  expect(bookings.markPublishFailed).toHaveBeenCalledTimes(1);
 });
 
 test('POST /bookings still works when availableUnits is 0 (Hotel decides through events)', async () => {
